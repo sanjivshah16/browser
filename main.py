@@ -74,7 +74,7 @@ def decode_url(encoded_url):
 def rewrite_html_content(html_content, original_url, proxy_base):
     """Rewrite HTML content to work with proxy"""
     try:
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, 'html5lib')
         base_url = get_base_url(original_url)
         
         # Handle base tag
