@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode, quote, unquote
 from bs4 import BeautifulSoup
 import base64
 import logging
+import chardet
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -74,8 +75,20 @@ def decode_url(encoded_url):
 def rewrite_html_content(html_content, original_url, proxy_base):
     """Rewrite HTML content to work with proxy"""
     try:
+        # Use html5lib parser which handles encoding better
         soup = BeautifulSoup(html_content, 'html5lib')
         base_url = get_base_url(original_url)
+        
+        # Ensure UTF-8 encoding
+        if soup.head:
+            # Remove existing charset meta tags
+            for meta in soup.head.find_all('meta'):
+                if meta.get('charset') or (meta.get('http-equiv') and 'content-type' in meta.get('http-equiv', '').lower()):
+                    meta.decompose()
+            
+            # Add proper UTF-8 charset
+            charset_meta = soup.new_tag('meta', charset='utf-8')
+            soup.head.insert(0, charset_meta)
         
         # Handle base tag
         base_tag = soup.find('base')
@@ -452,8 +465,18 @@ def browse():
         content_type = response.headers.get('content-type', '').lower()
         
         if 'text/html' in content_type:
+            # Detect encoding
+            detected_encoding = chardet.detect(response.content)
+            encoding = detected_encoding.get('encoding', 'utf-8')
+            
+            # Decode with detected encoding
+            try:
+                html_text = response.content.decode(encoding)
+            except:
+                html_text = response.content.decode('utf-8', errors='ignore')
+            
             # Process HTML content
-            processed_html = rewrite_html_content(response.text, response.url, proxy_base)
+            processed_html = rewrite_html_content(html_text, response.url, proxy_base)
             return Response(processed_html, content_type='text/html; charset=utf-8')
         else:
             # Return other content as-is
@@ -491,7 +514,16 @@ def proxy_resource(encoded_url):
         
         # Process CSS files to rewrite URLs
         if 'text/css' in content_type:
-            processed_css = rewrite_css_content(response.text, target_url, proxy_base)
+            # Detect encoding for CSS
+            detected_encoding = chardet.detect(response.content)
+            encoding = detected_encoding.get('encoding', 'utf-8')
+            
+            try:
+                css_text = response.content.decode(encoding)
+            except:
+                css_text = response.content.decode('utf-8', errors='ignore')
+            
+            processed_css = rewrite_css_content(css_text, target_url, proxy_base)
             return Response(processed_css, content_type='text/css; charset=utf-8')
         else:
             # Return other resources as-is
